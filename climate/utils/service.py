@@ -17,8 +17,26 @@
 
 from oslo.config import cfg
 
+from climate import context
 from climate.openstack.common import log
 from climate.openstack.common import rpc
+import climate.openstack.common.rpc.proxy as rpc_proxy
+
+
+class RpcProxy(rpc_proxy.RpcProxy):
+    def cast(self, name, topic=None, version=None, ctx=None, **kwargs):
+        if ctx is None:
+            ctx = context.Context.current()
+        msg = self.make_msg(name, **kwargs)
+        return super(RpcProxy, self).cast(ctx, msg,
+                                          topic=topic, version=version)
+
+    def call(self, name, topic=None, version=None, ctx=None, **kwargs):
+        if ctx is None:
+            ctx = context.Context.current()
+        msg = self.make_msg(name, **kwargs)
+        return super(RpcProxy, self).call(ctx, msg,
+                                          topic=topic, version=version)
 
 
 def prepare_service(argv=[]):

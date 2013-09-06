@@ -30,36 +30,7 @@ LOG = log.getLogger(__name__)
 eventlet.monkey_patch(
     os=True, select=True, socket=True, thread=True, time=True)
 
-
-opts = [
-    cfg.StrOpt('os_auth_protocol',
-               default='http',
-               help='Protocol used to access OpenStack Identity service'),
-    cfg.StrOpt('os_auth_host',
-               default='127.0.0.1',
-               help='IP or hostname of machine on which OpenStack Identity '
-                    'service is located'),
-    cfg.StrOpt('os_auth_port',
-               default='35357',
-               help='Port of OpenStack Identity service'),
-    cfg.StrOpt('os_admin_username',
-               default='admin',
-               help='This OpenStack user is used to verify provided tokens. '
-                    'The user must have admin role in <os_admin_tenant_name> '
-                    'tenant'),
-    cfg.StrOpt('os_admin_password',
-               default='nova',
-               help='Password of the admin user'),
-    cfg.StrOpt('os_admin_tenant_name',
-               default='admin',
-               help='Name of tenant where the user is admin'),
-    cfg.StrOpt('os_auth_version',
-               default='v2.0',
-               help='By default use Keystone API v2.0.'),
-]
-
 CONF = cfg.CONF
-CONF.register_opts(opts)
 
 
 def make_json_error(ex):
