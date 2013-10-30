@@ -16,7 +16,6 @@
 import datetime
 
 from climate.db.sqlalchemy import api as db_api
-from climate.openstack.common import context
 from climate.openstack.common import uuidutils
 from climate import tests
 
@@ -97,7 +96,6 @@ class SQLAlchemyDBApiTestCase(tests.DBTestCase):
 
     def setUp(self):
         super(SQLAlchemyDBApiTestCase, self).setUp()
-        self.set_context(context.get_admin_context())
 
     def test_create_virt_lease(self):
         """Create a virtual lease and verify that all tables have been

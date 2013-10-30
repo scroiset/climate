@@ -27,7 +27,7 @@ class Context(object):
 
     def __init__(self, user_id=None, tenant_id=None, auth_token=None,
                  service_catalog=None, user_name=None, tenant_name=None,
-                 roles=None, **kwargs):
+                 roles=None, is_admin=False, **kwargs):
         if kwargs:
             LOG.warn('Arguments dropped when creating context: %s', kwargs)
 
@@ -37,12 +37,32 @@ class Context(object):
         self.tenant_name = tenant_name
         self.auth_token = auth_token
         self.service_catalog = service_catalog
-        self.roles = roles
+        self.is_admin = is_admin
+        self.roles = roles or []
         self._db_session = None
+
+        #TODO(scroiset): policy check
+        #if not self.is_admin:
+        #    self.is_admin = policy.check_is_admin(self)
+
+    def elevated(self):
+        """Return a version of this context with admin flag set."""
+
+        elevated_context = self.clone()
+        elevated_context.is_admin = True
+
+        #TODO(scroiset): don't add hardcoded role name
+        #add role(s) set in policy.json in 'context_is_admin':
+        #roles_admin = policy.admin_roles()
+        #for r in roles_admin:
+        #    self.roles.append(a)
+
+        return elevated_context
 
     def __enter__(self):
         stack = self._contexts.setdefault(corolocal.get_ident(), [])
         stack.append(self)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         stack = self._contexts[corolocal.get_ident()]
@@ -71,7 +91,8 @@ class Context(object):
                        self.service_catalog,
                        self.user_name,
                        self.tenant_name,
-                       self.roles)
+                       self.roles,
+                       self.is_admin)
 
     def to_dict(self):
         return {
@@ -82,4 +103,5 @@ class Context(object):
             'auth_token': self.auth_token,
             'service_catalog': self.service_catalog,
             'roles': self.roles,
+            'is_admin': self.is_admin,
         }
