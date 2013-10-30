@@ -15,8 +15,8 @@
 
 import datetime
 
+from climate import context
 from climate.db.sqlalchemy import api as db_api
-from climate.openstack.common import context
 from climate.openstack.common import uuidutils
 from climate import test
 

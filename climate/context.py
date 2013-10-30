@@ -27,7 +27,7 @@ class Context(object):
 
     def __init__(self, user_id=None, tenant_id=None, auth_token=None,
                  service_catalog=None, user_name=None, tenant_name=None,
-                 roles=None, **kwargs):
+                 roles=None, is_admin=False, **kwargs):
         if kwargs:
             LOG.warn('Arguments dropped when creating context: %s', kwargs)
 
@@ -38,6 +38,7 @@ class Context(object):
         self.auth_token = auth_token
         self.service_catalog = service_catalog
         self.roles = roles
+        self.is_admin = is_admin
         self._db_session = None
 
     def __enter__(self):
@@ -71,7 +72,8 @@ class Context(object):
                        self.service_catalog,
                        self.user_name,
                        self.tenant_name,
-                       self.roles)
+                       self.roles,
+                       self.is_admin)
 
     def to_dict(self):
         return {
@@ -82,4 +84,9 @@ class Context(object):
             'auth_token': self.auth_token,
             'service_catalog': self.service_catalog,
             'roles': self.roles,
+            'is_admin': self.is_admin,
         }
+
+
+def get_admin_context():
+    return Context(is_admin=True)
