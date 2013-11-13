@@ -195,6 +195,195 @@ class PcloudWrapper(object):
     def set_ram_allocation_ratio(self, pcloud, ratio):
         return self.nova.pclouds.set_ram_allocation_ratio(pcloud, ratio)
 
+from keystoneclient.v2_0 import client as kclient
+
+
+class AggregateWrapper(object):
+    def __init__(self):
+        self.ctx = context.Context.current()
+        self.nova = nova.client(self.ctx)
+        keystone_url = base.url_for(self.ctx.service_catalog,
+                                    'identity')
+        warnings.warn("*****************************")
+        warnings.warn(keystone_url)
+        warnings.warn(CONF.os_admin_username)
+        key = kclient.Client(username='admin',
+                             password='password',
+                             tenant_name='admin',
+                             auth_url='http://127.0.0.1:5000/v2.0',
+                             debug=True)
+        print key.tenants.list()
+        self.nova_admin = client.Client('2',
+                                        username='admin',
+                                        api_key='password',
+                                        auth_url='http://127.0.0.1:5000/v2.0',
+                                        project_id='admin'
+                                        )
+
+    def _get_aggregate_from_name(self, name):
+
+        #FIXME(scrosiet): can't get an aggregate by name
+        # so iter over all aggregate and check for the good one!
+        all_aggregates = self.nova_admin.aggregates.list()
+        for agg in all_aggregates:
+            if name == agg.name:
+                return agg
+
+    def _get_pool_name(self):
+        return "%s-%s-%s" % ('climate',
+                             self.ctx.user_id,
+                             time.time())
+
+    def _get_aggregate_from_id(self, pool):
+        """pool can be an aggregate or an id."""
+        try:
+            i = int(pool)
+            # pool is an id
+            return self.nova_admin.aggregates.get(i)
+        except Exception:
+            if hasattr(pool, 'id'):
+                # pool is an aggregate
+                return self.nova_admin.aggregates.get(pool.id)
+
+    def create(self, name=None):
+        """Create a Pool (an Aggregate)"""
+
+        if name is None:
+            #XXX: use uuid
+            name = self._get_pool_name()
+
+        LOG.debug('Pool creation : %s' % name)
+        try:
+            a = self.nova_admin.aggregates.create(name, None)
+#            a.set_metatdata({'climate': True})
+            return a
+        except Exception, e:
+            raise e
+
+    def delete(self, pool, force=True):
+        """Delete an aggregate.
+
+        pool can be an aggregate name or aggregate id.
+        Release all hosts before delete aggregate (default).
+        If force is False, raise exception if one host is attached to.
+        """
+
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+
+        if agg is None:
+            LOG.warning("No aggregate associate with name or id %s" % pool)
+            return
+
+        hosts = agg.hosts
+        if len(hosts) > 0 and not force:
+            raise Exception("Can't delete Aggregate '%s', "
+                            "host(s) attached to it ; %s" % (pool,
+                                                             ", ".join(hosts)))
+        for h in hosts:
+            LOG.debug("Removing host '%s' from aggregate "
+                      "'%s')" % (h, agg.id))
+            self.nova_admin.aggregates.remove_host(agg, h)
+
+        try:
+            self.nova_admin.aggregates.delete(pool)
+        except Exception, e:
+            LOG.error(e)
+            raise e
+
+    def get_all(self):
+        """Return all aggregate."""
+        return self.nova_admin.aggregates.list()
+
+    def get(self, pool):
+        """return a Pool or None."""
+
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+
+        if agg is None:
+            return None
+        try:
+            return self.nova.aggregates.get_details(agg)
+        except nova_exceptions.NotFound:
+            raise exc.ClimateException('Aggregate "%s" not found' % agg)
+
+    def get_computehosts(self, pool):
+        """Return a list of compute host names."""
+
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+
+        if agg:
+            return agg.hosts
+        return []
+
+    def add_computehost(self, pool, host):
+        """Add a compute host to an aggregate
+        The `host` must exist otherwise raise an error
+        Return the related aggregate.
+        Raise an aggregate exception if something wrong.
+        """
+
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+        id_agg = agg.id
+
+        if agg is None or id_agg is None:
+            LOG.warning("Can't add a computehost "
+                        "to an inexistant Aggregate '%s' " % agg)
+            return
+
+        LOG.info("add host '%s' to aggregate %s" % (host, id_agg))
+        return self.nova_admin.aggregates.add_host(id_agg, host)
+
+    def remove_all_computehost(self, pool):
+        hosts = self.get_computehosts(pool)
+        self.remove_computehost(pool.id, hosts)
+
+    def remove_computehost(self, pool, hosts=[]):
+        "Remove compute host(s) from an aggregate."
+
+        if not isinstance(hosts, list):
+            hosts = [hosts]
+
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+
+        if agg is None:
+            raise nova_exceptions.NotFound("Aggregate '%s' not found!" % pool)
+
+        for h in hosts:
+            try:
+                self.nova_admin.aggregates.remove_host(agg.id, h)
+            except nova_exceptions.NotFound:
+                pass
+
+    def add_project(self, pool, project_id):
+        "Add a project to a pool."
+        metadata = {'project_id': project_id}
+
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+
+        return self.nova_admin.aggregates.set_metadata(agg.id, metadata)
+
+    def remove_project(self, pool, project_id):
+        agg = self._get_aggregate_from_id(pool)
+        if agg is None:
+            agg = self._get_aggregate_from_name(pool)
+
+        metadata = {'project_id': False}
+        return self.nova_admin.aggregates.set_metadata(agg.id, metadata)
+
 
 if PCLOUDS:
-    Pcloud = PcloudWrapper
+    ReservationPool = PcloudWrapper
+else:
+    ReservationPool = AggregateWrapper
