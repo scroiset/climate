@@ -19,31 +19,37 @@
 from climate import context
 from climate import exceptions as exc
 from climate.openstack.common import log as logging
-from climate.openstack.common import uuidutils
 from oslo.config import cfg
 
 from novaclient import client
 import novaclient.exceptions as nova_exceptions
 
+import uuid as uuidgen
+
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+TENANT_ID_KEY = 'climate:tenant'
 
 
 class AggregateWrapper(object):
     def __init__(self):
         self.ctx = context.Context.current()
+        auth_url = "%s://%s:%s/v2.0" % (CONF.os_auth_protocol,
+                                        CONF.os_auth_host,
+                                        CONF.os_auth_port
+                                        )
+#        self.nova_admin = client.Client('2',
+#                                        username=CONF.os_admin_username,
+#                                        api_key=CONF.os_admin_password,
+#                                        auth_url=auth_url,
+#                                        project_id=CONF.os_admin_tenant_name
+#                                        )
         self.nova_admin = client.Client('2',
                                         username=CONF.os_admin_username,
-                                        api_key=CONF.os_admin_password,
-                                        auth_url=CONF.os_auth_url,
-                                        project_id=CONF.os_admin_tenant_name
+                                        api_key='password',
+                                        auth_url=auth_url,
+                                        project_id='admin'
                                         )
-        #self.nova_admin = client.Client('2',
-        #                                username='admin',
-        #                                api_key='password',
-        #                                auth_url='http://127.0.0.1:5000/v2.0',
-        #                                project_id='admin'
-        #                                )
 
     def _get_aggregate_from_name(self, name):
 
@@ -67,27 +73,28 @@ class AggregateWrapper(object):
 
     def _get_aggregate_from_whatever(self, whatever):
         a = self._get_aggregate_from_id(whatever)
-        if a is None:
-            return self._get_aggregate_from_name(whatever)
+        if a is not None:
+            return a
+        return self._get_aggregate_from_name(whatever)
 
     def _get_aggregate_name(self, uuid=None):
         if uuid is not None:
             return 'climate:%s' % uuid
 
         return "%s:%s" % ('climate',
-                          uuidutils.generate_uuid())
+                          str(uuidgen.uuid4()))
 
     def create(self, name=None):
-        """Create a Pool (an Aggregate)"""
+        """Create a Pool (an Aggregate)."""
 
         name = self._get_aggregate_name()
 
         LOG.debug('Pool creation : %s' % name)
         try:
             a = self.nova_admin.aggregates.create(name, None)
-            a.set_metatdata({'user_id': self.ctx.user_id,
-                             'tenant_id': [self.ctx.tenant_id]}
-                            )
+            setmeta = self.nova_admin.aggregates.set_metadata
+            setmeta(a, {'climate:owner': self.ctx.tenant_id})
+            #setmeta(a, {self.ctx.tenant_id: TENANT_ID_KEY})
             return a
         except Exception, e:
             raise e
@@ -129,13 +136,13 @@ class AggregateWrapper(object):
     def get(self, pool):
         """return details for aggregate pool or None."""
 
-        if hasattr(pool, 'id'):
-            agg = pool
-        else:
-            agg = self._get_aggregate_from_whatever(pool)
+        print "get %s" % pool
+        agg = self._get_aggregate_from_whatever(pool)
+        print "got %s" % agg
 
         if agg is None:
             return None
+        return agg
         try:
             return self.nova.aggregates.get_details(agg.id)
         except nova_exceptions.NotFound:
@@ -193,7 +200,7 @@ class AggregateWrapper(object):
 
     def add_project(self, pool, project_id):
         "Add a project to a pool."
-        metadata = {'project_id': project_id}
+        metadata = {project_id: TENANT_ID_KEY}
 
         agg = self._get_aggregate_from_whatever(pool)
         if agg is None:
@@ -206,7 +213,7 @@ class AggregateWrapper(object):
         details = self.nova_admin.aggregates.get_details
         print details
 
-        metadata = {'project_id': False}
+        metadata = {project_id: None}
         return self.nova_admin.aggregates.set_metadata(agg.id, metadata)
 
 
