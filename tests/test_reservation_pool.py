@@ -20,10 +20,9 @@ from climate import context
 from climate import test
 from climate.utils import reservation_pool as rp
 
-import novaclient.client
-
 
 class AggregateFake(object):
+
     def __init__(self):
         self.id = 123
         self.name = 'fooname'
@@ -36,6 +35,7 @@ class ReservationPoolTestCase(test.TestCase):
         super(ReservationPoolTestCase, self).setUp()
         self.pool_name = 'pool-name-xxx'
         self.tenant_id = 'tenant-uuid'
+        self.fake_aggregate = AggregateFake()
         self.set_context(context.Context(tenant_id=self.tenant_id)
                          )
 
@@ -47,41 +47,44 @@ class ReservationPoolTestCase(test.TestCase):
         self.p_aggregate = mock.patch('climate.utils.reservation_pool.'
                                       'AggregateWrapper.'
                                       'get_aggregate_from_whatever',
-                                      return_value=AggregateFake())
+                                      return_value=self.fake_aggregate)
         self.p_aggregate.start()
 
         self.nova = mock.MagicMock()
         mock.patch('novaclient.client.Client',
                    return_value=self.nova).start()
 
+        self.nova.aggregates.set_metadata = mock.MagicMock()
+        self.nova.aggregates.remove_host = mock.MagicMock()
+
         self.pool = rp.AggregateWrapper()
 
     def test_create(self):
         self.nova.aggregates.create = mock.MagicMock(return_value=self.nova)
-        self.nova.aggregates.set_metadata = mock.MagicMock()
 
-        created = self.pool.create()
+        agg = self.pool.create()
 
+        self.assertEquals(agg, self.nova)
+
+        az_name = rp.CLIMATE_AZ_PREFIX + self.pool_name
         self.nova.aggregates.create\
                             .assert_called_once_with(self.pool_name,
-                                                     self.pool_name)
+                                                     az_name)
+
+        meta = {rp.CLIMATE_OWNER: self.tenant_id}
         self.nova.aggregates.set_metadata\
-                            .assert_called_once_with(self.nova,
-                                                     {rp.CLIMATE_OWNER:
-                                                      self.tenant_id})
+                            .assert_called_once_with(self.nova, meta)
 
     def test_create_no_az(self):
         self.nova.aggregates.create = mock.MagicMock(return_value=self.nova)
-        self.nova.aggregates.set_metadata = mock.MagicMock()
 
-        created = self.pool.create(az=False)
+        self.pool.create(az=False)
 
         self.nova.aggregates.create.assert_called_once_with(self.pool_name,
                                                             None)
 
     def test_delete(self):
         self.nova.aggregates.delete = mock.MagicMock()
-        self.nova.aggregates.remove_host = mock.MagicMock()
 
         agg = self.pool.get('foo')
 
@@ -93,10 +96,20 @@ class ReservationPoolTestCase(test.TestCase):
         # can't delete aggregate with hosts
         self.assertRaises(Exception, self.pool.create, 'bar', force=False)
 
-        agg.hosts=[]
+        agg.hosts = []
         self.nova.aggregates.delete.reset_mock()
         self.pool.delete('foo', force=False)
         self.nova.aggregates.delete.assert_called_once_with(agg.id)
+
+    def test_get_all(self):
+        self.nova.aggregates.list = mock.MagicMock()
+        self.pool.get_all()
+        self.nova.aggregates.list.assert_called_once_with()
+
+    def test_get(self):
+        agg = self.pool.get('foo')
+        self.assertEquals(self.fake_aggregate,
+                          agg)
 
     def test_add_computehost(self):
         self.nova.aggregates.add_host = mock.MagicMock()
@@ -107,9 +120,27 @@ class ReservationPoolTestCase(test.TestCase):
                             .assert_called_once_with(AggregateFake().id,
                                                      'host3')
 
-    def test_add_project(self):
-        pass
+    def test_remove_allcomputehosts(self):
+        self.pool.remove_all_computehost('pool')
+        for h in AggregateFake().hosts:
+            self.nova.aggregates.remove_host\
+                                .assert_any_call(AggregateFake().id,
+                                                 h)
 
     def test_get_computehosts(self):
         hosts = self.pool.get_computehosts('foo')
         self.assertEquals(hosts, AggregateFake().hosts)
+
+    def test_add_project(self):
+        self.pool.add_project('pool', 'projectX')
+        self.nova.aggregates.set_metadata\
+                 .assert_called_once_with(self.fake_aggregate.id,
+                                          {'projectX': rp.TENANT_ID_KEY}
+                                          )
+
+    def test_remove_project(self):
+        self.pool.remove_project('pool', 'projectY')
+        self.nova.aggregates.set_metadata\
+                 .assert_called_once_with(self.fake_aggregate.id,
+                                          {'projectY': None}
+                                          )
