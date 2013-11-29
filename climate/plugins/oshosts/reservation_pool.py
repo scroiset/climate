@@ -78,7 +78,7 @@ class AggregateNotFound(Exception):
         self.pool = pool
 
     def __str__(self):
-        return self.msg % (self.pool)
+        return self.msg % self.pool
 
 
 class ReservationPool(object):
@@ -150,13 +150,11 @@ class ReservationPool(object):
 
         if az_name is None:
             LOG.debug('Creating pool aggregate: %s'
-                      'without Availability Zone' % name
-                      )
+                      'without Availability Zone' % name)
             agg = self.nova.aggregates.create(name)
         else:
             LOG.debug('Creating pool aggregate: %s'
-                      'with Availability Zone %s' % (name, az_name)
-                      )
+                      'with Availability Zone %s' % (name, az_name))
             agg = self.nova.aggregates.create(name, az_name)
 
         meta = {CLIMATE_OWNER: self.ctx.tenant_id}
@@ -236,8 +234,7 @@ class ReservationPool(object):
             raise HostNotInFreePool(host, freepool_agg.name)
 
         LOG.info("removing host '%s' "
-                 "to aggregate freepool %s" % (host,
-                                               freepool_agg.name))
+                 "to aggregate freepool %s" % (host, freepool_agg.name))
         self.remove_computehost(freepool_agg.id, host)
 
         LOG.info("adding host '%s' to aggregate %s" % (host, agg.id))

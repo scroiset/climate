@@ -41,13 +41,11 @@ class ReservationPoolTestCase(tests.TestCase):
         self.tenant_id = 'tenant-uuid'
         self.fake_aggregate = AggregateFake(i=123,
                                             name='fooname',
-                                            hosts=['host1', 'host2']
-                                            )
+                                            hosts=['host1', 'host2'])
         self.freepool_name = cfg.CONF['physical:host'].aggregate_freepool_name
         self.fake_freepool = AggregateFake(i=456,
                                            name=self.freepool_name,
-                                           hosts=['host3']
-                                           )
+                                           hosts=['host3'])
 
         self.set_context(context.ClimateContext(tenant_id=self.tenant_id))
 
@@ -75,24 +73,21 @@ class ReservationPoolTestCase(tests.TestCase):
 
     def test_get_agg_from_id(self):
         self.pool.get_aggregate_from_id(123)
-        self.nova.aggregates.get\
-                 .assert_called_once_with(123)
+        self.nova.aggregates.get.assert_called_once_with(123)
 
         self.nova.aggregates.get.reset_mock()
         self.pool.get_aggregate_from_id("456")
-        self.nova.aggregates.get\
-                 .assert_called_once_with(456)
+        self.nova.aggregates.get.assert_called_once_with(456)
 
         self.nova.aggregates.get.reset_mock()
         self.pool.get_aggregate_from_id(self.fake_aggregate)
         self.nova.aggregates.get\
-                 .assert_called_once_with(self.fake_aggregate.id)
+            .assert_called_once_with(self.fake_aggregate.id)
 
     def test_get_agg_from_name(self):
         self.nova.aggregates.list.return_value = [self.fake_aggregate]
 
-        self.assertEqual(self.pool.get_aggregate_from_name('none'),
-                         None)
+        self.assertEqual(self.pool.get_aggregate_from_name('none'), None)
         self.assertEqual(self.pool.get_aggregate_from_name('fooname'),
                          self.fake_aggregate)
 
@@ -105,18 +100,16 @@ class ReservationPoolTestCase(tests.TestCase):
 
         self.nova.aggregates.get.reset_mock()
         self.pool.get_aggregate_from_name_or_id(123)
-        self.nova.aggregates.get\
-                 .assert_called_once_with(123)
+        self.nova.aggregates.get.assert_called_once_with(123)
 
         self.nova.aggregates.get.reset_mock()
         self.pool.get_aggregate_from_name_or_id("456")
-        self.nova.aggregates.get\
-                 .assert_called_once_with(456)
+        self.nova.aggregates.get.assert_called_once_with(456)
 
         self.nova.aggregates.get.reset_mock()
         self.pool.get_aggregate_from_name_or_id(self.fake_aggregate)
         self.nova.aggregates.get\
-                 .assert_called_once_with(self.fake_aggregate.id)
+            .assert_called_once_with(self.fake_aggregate.id)
 
     def test_create(self):
         self.nova.aggregates.create = mock.MagicMock(
@@ -129,12 +122,11 @@ class ReservationPoolTestCase(tests.TestCase):
 
         az_name = rp.CLIMATE_AZ_PREFIX + self.pool_name
         self.nova.aggregates.create\
-                            .assert_called_once_with(self.pool_name,
-                                                     az_name)
+            .assert_called_once_with(self.pool_name, az_name)
 
         meta = {rp.CLIMATE_OWNER: self.tenant_id}
         self.nova.aggregates.set_metadata\
-                            .assert_called_once_with(self.fake_aggregate, meta)
+            .assert_called_once_with(self.fake_aggregate, meta)
 
     def test_create_no_az(self):
         self.nova.aggregates.create = mock.MagicMock(
@@ -151,12 +143,10 @@ class ReservationPoolTestCase(tests.TestCase):
 
         self.pool.delete(agg)
         self.nova.aggregates.delete.assert_called_once_with(agg.id)
-        for h in agg.hosts:
-            self.nova.aggregates.remove_host.assert_any_call(agg.id, h)
+        for host in agg.hosts:
+            self.nova.aggregates.remove_host.assert_any_call(agg.id, host)
             self.nova.aggregates.add_host.assert_any_call(
-                self.fake_freepool.name,
-                h
-            )
+                self.fake_freepool.name, host)
 
         # can't delete aggregate with hosts
         self.assertRaises(rp.AggregateHaveHost,
@@ -185,11 +175,9 @@ class ReservationPoolTestCase(tests.TestCase):
         self.pool.add_computehost('pool', 'host3')
 
         self.nova.aggregates.add_host\
-                            .assert_any_call(self.fake_aggregate.id,
-                                             'host3')
+            .assert_any_call(self.fake_aggregate.id, 'host3')
         self.nova.aggregates.remove_host\
-                            .assert_any_call(self.fake_aggregate.id,
-                                             'host3')
+            .assert_any_call(self.fake_aggregate.id, 'host3')
 
     def test_add_computehost_not_in_freepool(self):
         self._patch_get_agg_from_whatever()
@@ -202,16 +190,14 @@ class ReservationPoolTestCase(tests.TestCase):
         self._patch_get_agg_from_whatever()
         self.pool.add_computehost_to_freepool('host2')
         self.nova.aggregates.add_host\
-                            .assert_called_once_with(self.fake_freepool.id,
-                                                     'host2')
+            .assert_called_once_with(self.fake_freepool.id, 'host2')
 
     def test_remove_computehost_from_freepool(self):
         self._patch_get_agg_from_whatever()
         self.pool.remove_computehost_from_freepool('host3')
 
         self.nova.aggregates.remove_host\
-                            .assert_called_once_with(self.fake_freepool.id,
-                                                     'host3')
+            .assert_called_once_with(self.fake_freepool.id, 'host3')
 
     def test_remove_computehost_from_freepool_not_in(self):
         self._patch_get_agg_from_whatever()
@@ -222,10 +208,9 @@ class ReservationPoolTestCase(tests.TestCase):
     def test_remove_allcomputehosts(self):
         self._patch_get_agg_from_whatever()
         self.pool.remove_all_computehosts('pool')
-        for h in self.fake_aggregate.hosts:
+        for host in self.fake_aggregate.hosts:
             self.nova.aggregates.remove_host\
-                                .assert_any_call(self.fake_aggregate.id,
-                                                 h)
+                .assert_any_call(self.fake_aggregate.id, host)
 
     def test_get_computehosts(self):
         self._patch_get_agg_from_whatever()
@@ -236,14 +221,12 @@ class ReservationPoolTestCase(tests.TestCase):
         self._patch_get_agg_from_whatever()
         self.pool.add_project('pool', 'projectX')
         self.nova.aggregates.set_metadata\
-                 .assert_called_once_with(self.fake_aggregate.id,
-                                          {'projectX': rp.TENANT_ID_KEY}
-                                          )
+            .assert_called_once_with(self.fake_aggregate.id,
+                                     {'projectX': rp.TENANT_ID_KEY})
 
     def test_remove_project(self):
         self._patch_get_agg_from_whatever()
         self.pool.remove_project('pool', 'projectY')
         self.nova.aggregates.set_metadata\
-                 .assert_called_once_with(self.fake_aggregate.id,
-                                          {'projectY': None}
-                                          )
+            .assert_called_once_with(self.fake_aggregate.id,
+                                     {'projectY': None})
